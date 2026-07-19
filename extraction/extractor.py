@@ -278,6 +278,10 @@ def call_claude_api(
             
     if client is None:
         # Fallback to local rule-based mock for testing/demonstration
+        # Simulate network latency of 50ms - 150ms depending on length of text
+        simulated_delay = min(0.150, 0.050 + len(text_clean) / 1000.0)
+        time.sleep(simulated_delay)
+        
         mock_resp = generate_mock_response(text_clean)
         input_tokens = len(text_clean.split()) + 150
         output_tokens = len(mock_resp.split()) + 30
