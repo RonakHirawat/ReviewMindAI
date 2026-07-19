@@ -1,0 +1,140 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so they can be ignored.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nosexyproject/
+.nosetests
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.stats
+.scrutinizer.yml
+.pytest_cache/
+.coverage
+.coverage.*
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+#   For a library or app, you might want to share your .python-version.
+#   Comment/uncomment to suit your preference.
+#.python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if you do not want it, uncomment:
+#Pipfile.lock
+
+# poetry
+#   Similar to Pipfile.lock, poetry.lock is generally recommended to be in version control.
+#   However, if you wish to ignore it, uncomment:
+#poetry.lock
+
+# pdm
+#   Similar to Pipfile.lock, pdm.lock is generally recommended to be in version control.
+#   pdm.lock
+#   pdm.toml
+.pdm-plugins/
+
+# pyflow
+.pyflow/
+
+# venv
+#   Useful to ignore local virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Editor / IDE configuration
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Local / configuration variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Project-specific local files / databases
+reviews_intelligence.db
+reviews_intelligence.db-journal
+reviews_intelligence.db-wal
+reviews_intelligence.db-shm
+data/synthetic_reviews.json
+*.db
+*.sqlite
