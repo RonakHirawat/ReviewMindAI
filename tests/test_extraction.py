@@ -1,10 +1,20 @@
 import os
 import json
 import pytest
+import anthropic
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+# Load .env manually if it exists
+if os.path.exists(".env"):
+    with open(".env", "r") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ[k.strip()] = v.strip().strip("'\"")
 
 from db.models import Base, ReviewClean, ReviewAspect, ExtractionRun
 from extraction.extractor import extract_aspects_for_review, validate_verbatim_spans, Aspect

@@ -8,6 +8,15 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 import anthropic
 
+# Load .env manually if it exists
+if os.path.exists(".env"):
+    with open(".env", "r") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ[k.strip()] = v.strip().strip("'\"")
+
 from db.models import ReviewClean, ReviewAspect, ExtractionRun
 
 # Default model used for extraction (as stand-in for fast tier)
