@@ -37,13 +37,34 @@ def run_phase2():
     else:
         print(f"Processing {unprocessed_count} unprocessed reviews...")
         
-    # 3. Run batch processor
-    # We pass None as client to let call_claude_api fall back to the environment key or mock
-    # If ANTHROPIC_API_KEY is not set, it will run using the rule-based mock generator
-    api_key_status = "Live API Key Found" if os.environ.get("ANTHROPIC_API_KEY") else "API Key Not Found (Running in Mock Fallback Mode)"
-    print(f"API Mode: {api_key_status}")
+    # 3. Clean up old extraction runs and aspects to allow a fresh run
+    print("Clearing old extraction runs and aspects for a fresh batch...")
+    session.query(ReviewAspect).delete()
+    session.query(ExtractionRun).delete()
+    session.commit()
     
-    stats = process_batch(session=session, client=None)
+    provider = os.environ.get("LLM_PROVIDER", "gemini").lower()
+    if provider == "gemini":
+        model_name = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        db_model_tag = model_name
+        print(f"Gemini Mode: Using model '{model_name}' (DB tag: '{db_model_tag}')")
+    else:
+        model_name = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+        db_model_tag = f"ollama-{model_name}"
+        print(f"Ollama Mode: Using model '{model_name}' (DB tag: '{db_model_tag}')")
+
+    limit_val = os.environ.get("BATCH_LIMIT")
+    limit = int(limit_val) if limit_val else None
+    if limit:
+        print(f"Limiting execution to {limit} reviews for verification.")
+        
+    stats = process_batch(session=session, client=None, model=db_model_tag, limit=limit)
+    
+    if provider == "gemini":
+        paid_equivalent = stats['estimated_cost_inr']
+        estimated_cost_display = f"INR 0.0000 (Free Tier) [Paid equivalent: INR {paid_equivalent:.4f}]"
+    else:
+        estimated_cost_display = "INR 0.0000 (Local Inference: True)"
     
     print("\n" + "=" * 40)
     print("BATCH EXTRACTION PIPELINE SUMMARY:")
@@ -56,7 +77,7 @@ def run_phase2():
     print(f"Total Input Tokens Used:    {stats['total_input_tokens']:,}")
     print(f"Total Output Tokens Used:   {stats['total_output_tokens']:,}")
     print(f"Total Token Count:          {stats['total_input_tokens'] + stats['total_output_tokens']:,}")
-    print(f"Estimated Cost (INR):       INR {stats['estimated_cost_inr']:.4f} (at ~INR 8/M input, ~INR 32/M output)")
+    print(f"Estimated Cost (INR):       {estimated_cost_display}")
     print(f"Extraction Failures:        {stats['failures']}")
     print("=" * 40)
     

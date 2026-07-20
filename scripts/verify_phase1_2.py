@@ -105,7 +105,15 @@ def verify():
     total_output_tokens = sum(r.output_tokens for r in runs)
     avg_latency = sum(r.latency_ms for r in runs) / total_runs if total_runs > 0 else 0
     
-    cost_inr = (total_input_tokens / 1_000_000.0) * 8.0 + (total_output_tokens / 1_000_000.0) * 32.0
+    # Check if this is local inference (Ollama)
+    is_local_inference = any(r.extraction_model_version.startswith("ollama-") for r in runs)
+    
+    if is_local_inference:
+        cost_inr = 0.0
+        cost_display = "INR 0.0000 (Local Inference: True)"
+    else:
+        cost_inr = (total_input_tokens / 1_000_000.0) * 8.0 + (total_output_tokens / 1_000_000.0) * 32.0
+        cost_display = f"INR 0.0000 (Free Tier) [Paid equivalent: INR {cost_inr:.4f}]"
     
     # Print the verification report
     print("\n" + "=" * 60)
@@ -136,7 +144,7 @@ def verify():
     print(f"g) Cost / Latency Sanity:")
     print(f"   - Total Calls Logged: {total_runs}")
     print(f"   - Total Tokens: {total_input_tokens + total_output_tokens} (In: {total_input_tokens}, Out: {total_output_tokens})")
-    print(f"   - Total Estimated Cost: INR {cost_inr:.4f}")
+    print(f"   - Total Estimated Cost: {cost_display}")
     print(f"   - Avg Latency: {avg_latency:.1f} ms")
     print("=" * 60)
     

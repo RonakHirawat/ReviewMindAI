@@ -71,12 +71,12 @@ def test_verbatim_span_validation_handcrafted(db_session):
         "aspects": [mock_aspect_1, mock_aspect_2]
     }
     
-    # Mock call_claude_api to return our handcrafted JSON
-    with patch("extraction.extractor.call_claude_api") as mock_call:
-        mock_call.return_value = (
-            import_json_string(mock_response_json),
-            120,
-            80
+    # Mock generate_structured to return our handcrafted AspectExtraction
+    with patch("extraction.extractor.generate_structured") as mock_gen:
+        from extraction.extractor import AspectExtraction
+        mock_gen.return_value = (
+            AspectExtraction.model_validate(mock_response_json),
+            {"prompt_tokens": 120, "completion_tokens": 80, "latency_ms": 150.0, "local_inference": True}
         )
         
         # We pass None as client because it is mocked
@@ -135,11 +135,11 @@ def test_prompt_injection_non_compliance_mocked(db_session):
         "aspects": []
     }
     
-    with patch("extraction.extractor.call_claude_api") as mock_call:
-        mock_call.return_value = (
-            import_json_string(mock_response_json),
-            100,
-            20
+    with patch("extraction.extractor.generate_structured") as mock_gen:
+        from extraction.extractor import AspectExtraction
+        mock_gen.return_value = (
+            AspectExtraction.model_validate(mock_response_json),
+            {"prompt_tokens": 100, "completion_tokens": 20, "latency_ms": 150.0, "local_inference": True}
         )
         
         validated_aspects, dropped_count, status = extract_aspects_for_review(
@@ -180,11 +180,11 @@ def test_no_product_content_returns_empty(db_session):
     # Mocked response showing empty aspects
     mock_response_json = {"aspects": []}
     
-    with patch("extraction.extractor.call_claude_api") as mock_call:
-        mock_call.return_value = (
-            import_json_string(mock_response_json),
-            90,
-            15
+    with patch("extraction.extractor.generate_structured") as mock_gen:
+        from extraction.extractor import AspectExtraction
+        mock_gen.return_value = (
+            AspectExtraction.model_validate(mock_response_json),
+            {"prompt_tokens": 90, "completion_tokens": 15, "latency_ms": 150.0, "local_inference": True}
         )
         
         validated_aspects, dropped_count, status = extract_aspects_for_review(

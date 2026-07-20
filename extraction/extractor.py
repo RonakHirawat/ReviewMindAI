@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
-import anthropic
 
 # Load .env manually if it exists
 if os.path.exists(".env"):
@@ -18,13 +17,11 @@ if os.path.exists(".env"):
                 os.environ[k.strip()] = v.strip().strip("'\"")
 
 from db.models import ReviewClean, ReviewAspect, ExtractionRun
+from common.llm_client import generate_structured
 
-# Default model used for extraction (as stand-in for fast tier)
-DEFAULT_MODEL = "claude-3-haiku-20240307"
+# Default model used for extraction (Gemini model name)
+DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 PROMPT_VERSION = "absa-v1"
-
-# Price rates in INR per 1 Million tokens (fast tier stand-in)
-# rates from the design doc: ~₹8/M input, ~₹32/M output
 INPUT_RATE_INR_PER_M = 8.0
 OUTPUT_RATE_INR_PER_M = 32.0
 
@@ -271,104 +268,55 @@ def generate_mock_response(text_clean: str) -> str:
             
     return json.dumps({"aspects": aspects})
 
-def call_claude_api(
-    client: Optional[anthropic.Anthropic],
-    text_clean: str,
-    model: str
-) -> Tuple[str, int, int]:
-    """
-    Helper to call Claude API and return response string, input tokens, and output tokens.
-    If no client is provided, checks environment. Falls back to mock if no API key is found.
-    """
-    if client is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if api_key:
-            client = anthropic.Anthropic(api_key=api_key)
-            
-    if client is None:
-        # Fallback to local rule-based mock for testing/demonstration
-        # Simulate network latency of 50ms - 150ms depending on length of text
-        simulated_delay = min(0.150, 0.050 + len(text_clean) / 1000.0)
-        time.sleep(simulated_delay)
-        
-        mock_resp = generate_mock_response(text_clean)
-        input_tokens = len(text_clean.split()) + 150
-        output_tokens = len(mock_resp.split()) + 30
-        return mock_resp, input_tokens, output_tokens
-    
-    formatted_content = f"<<<REVIEW>>>\n{text_clean}\n<<<END>>>"
-    
-    response = client.messages.create(
-        model=model,
-        max_tokens=1000,
-        temperature=0.0,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {"role": "user", "content": formatted_content}
-        ]
-    )
-    
-    # Extract text from response
-    resp_text = ""
-    if response.content and len(response.content) > 0:
-        resp_text = response.content[0].text
-        
-    return resp_text, response.usage.input_tokens, response.usage.output_tokens
-
 def extract_aspects_for_review(
     session: Session,
     review: ReviewClean,
-    client: Optional[anthropic.Anthropic],
+    client: Optional[Any] = None,
     model: str = DEFAULT_MODEL,
     prompt_version: str = PROMPT_VERSION
 ) -> Tuple[List[Aspect], int, str]:
     """
-    Extract aspects for a single review row, handles 1 retry on JSON/Pydantic validation failure.
+    Extract aspects for a single review row using local Ollama.
     Logs metadata to extraction_runs and writes aspect rows to review_aspects.
     Returns (validated_aspects, aspects_dropped_count, status).
     """
     start_time = time.time()
     
-    attempts = 0
-    max_attempts = 2
     success = False
     parsed_extraction = None
     last_error = ""
     
     input_tokens_used = 0
     output_tokens_used = 0
+    latency_ms = 0
     
-    while attempts < max_attempts and not success:
-        attempts += 1
-        try:
-            # Call API
-            resp_text, in_tokens, out_tokens = call_claude_api(client, review.text_clean, model)
-            input_tokens_used += in_tokens
-            output_tokens_used += out_tokens
-            
-            # Parse JSON
-            cleaned_resp = clean_json_string(resp_text)
-            parsed_json = json.loads(cleaned_resp)
-            
-            # Validate with Pydantic
-            parsed_extraction = AspectExtraction.model_validate(parsed_json)
-            success = True
-            
-        except Exception as e:
-            last_error = str(e)
-            print(f"[RETRY_LOG] Attempt {attempts} failed for review_id {review.review_id}: {last_error}")
-            if attempts < max_attempts:
-                time.sleep(1.0) # brief sleep before retry
-                
-    latency_ms = int((time.time() - start_time) * 1000)
+    user_prompt = f"<<<REVIEW>>>\n{review.text_clean}\n<<<END>>>"
     
+    try:
+        # Call generate_structured
+        parsed_extraction, metadata = generate_structured(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            schema=AspectExtraction,
+            temperature=0.0
+        )
+        success = True
+        input_tokens_used = metadata["prompt_tokens"]
+        output_tokens_used = metadata["completion_tokens"]
+        latency_ms = int(metadata["latency_ms"])
+        
+    except Exception as e:
+        last_error = str(e)
+        success = False
+        print(f"[RETRY_LOG] Failed for review_id {review.review_id}: {last_error}")
+        
+    # Calculate wall-clock latency if we failed before getting metadata
+    if latency_ms == 0:
+        latency_ms = int((time.time() - start_time) * 1000)
+        
     # Save extraction run log
     status = "success" if success else "failed"
-    if success and attempts > 1:
-        status = "retry_success"
-    elif not success:
-        status = "retry_failed"
-        
+    
     run_log = ExtractionRun(
         review_id=review.review_id,
         extraction_model_version=model,
@@ -384,7 +332,6 @@ def extract_aspects_for_review(
     session.commit()
     
     if not success:
-        # Return empty list and 0 dropped aspects since we couldn't parse the response
         return [], 0, status
         
     # Validate verbatim spans
@@ -414,7 +361,7 @@ def extract_aspects_for_review(
 
 def process_batch(
     session: Session,
-    client: Optional[anthropic.Anthropic],
+    client: Optional[Any] = None,
     model: str = DEFAULT_MODEL,
     prompt_version: str = PROMPT_VERSION,
     limit: Optional[int] = None
@@ -457,8 +404,12 @@ def process_batch(
     total_input_tokens = 0
     total_output_tokens = 0
     failures = 0
+    pace_delay = float(os.environ.get("PACE_DELAY_SEC", "1.0"))
     
     for idx, review in enumerate(unprocessed_reviews):
+        if idx > 0 and pace_delay > 0:
+            time.sleep(pace_delay)
+            
         print(f"[{idx+1}/{total_reviews}] Processing review_id: {review.review_id}")
         
         try:
